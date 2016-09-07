@@ -63,7 +63,7 @@ public class ISIROperator extends Task {
      * the default CSV_SEPARATOR
      */
     public ISIROperator(String sPathToCSV, char cSeparator) {
-        this(sPathToCSV,getSavePath(sPathToCSV), cSeparator, MAKE_ALL_CSV);
+        this(sPathToCSV, getSavePath(sPathToCSV), cSeparator, MAKE_ALL_CSV);
     }
 
     /**
@@ -77,7 +77,6 @@ public class ISIROperator extends Task {
      */
     public ISIROperator(String sPathToCSV, char cSeparator, boolean makeAllCSV) {
         this(sPathToCSV, getSavePath(sPathToCSV), cSeparator, makeAllCSV);
-
     }
 
     /**
@@ -101,24 +100,26 @@ public class ISIROperator extends Task {
 
     /**
      * The inherited method which is called whenever the task starts
-     * @return 
-     * @throws Exception 
+     *
+     * @return
+     * @throws Exception
      */
-    @Override    
+    @Override
     protected Object call() throws Exception {
-            File f = new File(sPathToCreateCSV);
-            cwSubjectsFound = new CSVWriter(new FileWriter(f), cSeparator);
-            cwSubjectsNotFound = new CSVWriter(new FileWriter(new File(f.getParent() + "\\NotFound.csv")), cSeparator);
-        try {
-            alAllSubjects = new ISIRCSVLoader(sPathToCSV).getAllSubjects();
-            iNumOfAllSubjects = alAllSubjects.size();
-            alAllSubjects.stream().forEach((String[] sf) -> {
-                SOAPMessage response = null;
-                if (sf.length > 1) {
-                    iNumOfRequestedSubjects += 1;
-                    updateProgress((iNumOfRequestedSubjects*100)/iNumOfAllSubjects,100);
-                    response = new ISIRSOAP(getTypeOf(sf[1]), sf[1]).getResponse();
-                } if (response != null){
+        File f = new File(sPathToCreateCSV);
+        cwSubjectsFound = new CSVWriter(new FileWriter(f), cSeparator);
+        cwSubjectsNotFound = new CSVWriter(new FileWriter(new File(f.getParent() + "\\NotFound.csv")), cSeparator);
+
+        alAllSubjects = new ISIRCSVLoader(sPathToCSV).getAllSubjects();
+        iNumOfAllSubjects = alAllSubjects.size();
+        alAllSubjects.stream().forEach((String[] sf) -> {
+            SOAPMessage response = null;
+            if (sf.length > 1) {
+                iNumOfRequestedSubjects += 1;
+                updateProgress((iNumOfRequestedSubjects * 100) / iNumOfAllSubjects, 100);
+                response = new ISIRSOAP(getTypeOf(sf[1]), sf[1]).getResponse();
+            }
+            if (response != null) {
                 try {
                     ArrayList<HashMap> alAllData = new ISIRXMLParser(response).getAlAllData();
                     isirLines = new ISIRCSVLinesMaker(alAllData);
@@ -130,7 +131,7 @@ public class ISIROperator extends Task {
                             cwSubjectsFound.writeNext(sfToCSV);
                             alRecords.add(sfToCSV);
                         });
-                        
+
                     } else {
                         alLinesToCSV.stream().forEach((sfToCSV) -> {
                             sfToCSV[0] = sf[0];
@@ -139,47 +140,42 @@ public class ISIROperator extends Task {
                         });
                     }
                     //new CSVWriter, put lines from lines maker
-                } catch (SOAPException ex) {
+                } catch (SOAPException | IOException | ParserConfigurationException | SAXException ex) {
+                    String s[] = {sf[0], sf[1], "An exception when request executed. Please try again or request the subject manually."};
                     Logger.getLogger(ISIROperator.class.getName()).log(Level.SEVERE, null, ex);
-                } catch (IOException ex) {
-                    Logger.getLogger(ISIROperator.class.getName()).log(Level.SEVERE, null, ex);
-                } catch (ParserConfigurationException ex) {
-                    Logger.getLogger(ISIROperator.class.getName()).log(Level.SEVERE, null, ex);
-                } catch (SAXException ex) {
-                    Logger.getLogger(ISIROperator.class.getName()).log(Level.SEVERE, null, ex);
-                }} else {
-                    String s[] = {sf[0],sf[1],"Request wasn't executed. Please try again or request the subject manually."};
-                    cwSubjectsFound.writeNext(s);
                 }
-            });
-        } catch (IOException ex) {
-            Logger.getLogger(ISIROperator.class.getName()).log(Level.SEVERE, null, ex);
-        }
-        try {
-            cwSubjectsFound.close();
-            cwSubjectsNotFound.close();
-        } catch (IOException ex) {
-            Logger.getLogger(ISIROperator.class.getName()).log(Level.SEVERE, null, ex);
-        }
+            } else {
+                String s[] = {sf[0], sf[1], "Request wasn't executed. Please try again or request the subject manually."};
+                cwSubjectsFound.writeNext(s);
+            }
+        });
+
+        cwSubjectsFound.close();
+        cwSubjectsNotFound.close();
+
         updateMessage("Done");
         return "Done";
     }
-    
-    public static final String getSavePath(String sLoadPath){
-        return (new File(sLoadPath).getParent())+"\\Found.csv";
+
+    public static final String getSavePath(String sLoadPath) {
+        return (new File(sLoadPath).getParent()) + "\\Found.csv";
     }
-    
-     public static final String getTypeOf(String s) {
+
+    public static final String getTypeOf(String s) {
         Pattern pIC = Pattern.compile("[0-9]{6,8}");
         Pattern pRC = Pattern.compile("[0-9]{10}");
         Matcher mField = pIC.matcher(s);
-        if (mField.matches()) return "ic";
+        if (mField.matches()) {
+            return "ic";
+        }
         mField = pRC.matcher(s);
-        if (mField.matches()) return "rc";
+        if (mField.matches()) {
+            return "rc";
+        }
         return "wrong parameter";
     }
-     
-     public ArrayList<String[]> getAlAllFoundSubjects(){
-         return alRecords;
-     }
+
+    public ArrayList<String[]> getAlAllFoundSubjects() {
+        return alRecords;
+    }
 }

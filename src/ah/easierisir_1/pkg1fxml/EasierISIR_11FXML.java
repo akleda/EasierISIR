@@ -22,6 +22,7 @@ public class EasierISIR_11FXML extends Application {
         Parent root = FXMLLoader.load(getClass().getResource("FXMLDocument.fxml"));
         
         Scene scene = new Scene(root);
+        //scene.getStylesheets().add("ei.css");
         stage.setTitle("EasierISIR");
         stage.setScene(scene);
         stage.show();

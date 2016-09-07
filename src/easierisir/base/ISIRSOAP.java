@@ -21,128 +21,108 @@ import javax.xml.soap.SOAPException;
 import javax.xml.soap.SOAPMessage;
 
 /**
- * ISIRSOAP requests the SOAP webservice which runs on the WS_URL if the subject specified by IC or RC can be found 
+ * ISIRSOAP requests the SOAP webservice which runs on the WS_URL if the subject
+ * specified by IC or RC can be found
+ *
  * @author Adelka
  */
 public class ISIRSOAP {
-    
-    private static final String WS_URL = "https://isir.justice.cz:8443/isir_cuzk_ws/IsirWsCuzkService"; 
+
+    private static final String WS_URL = "https://isir.justice.cz:8443/isir_cuzk_ws/IsirWsCuzkService";
     private String sSOAPXml;
     private String sElementName, sElementValue;
     private SOAPMessage smResponse = null;
-    
+
     /**
      * Constructor which allows to set the request directly
-     * @param xmlSOAPRequest 
+     *
+     * @param xmlSOAPRequest
      */
-    public ISIRSOAP(String xmlSOAPRequest){
+    public ISIRSOAP(String xmlSOAPRequest) {
         this.sSOAPXml = xmlSOAPRequest;
         smResponse = getResponse();
     }
-    
+
     /**
      * Constructor which creates the request from the parameters itself
+     *
      * @param elementName Element to be requested, e.g. ic
      * @param elementValue Value of the element to be requested, e.g. "00123456"
      */
-    public ISIRSOAP(String elementName,String elementValue){
+    public ISIRSOAP(String elementName, String elementValue) {
         this.sElementName = elementName;
         this.sElementValue = elementValue;
         this.sSOAPXml = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:typ=\"http://isirws.cca.cz/types/\">"
-                    + "<soapenv:Header/>"
-                    + "<soapenv:Body>"
-                    + "<typ:getIsirWsCuzkDataRequest>"
-                    + "<"+elementName+">"+elementValue+"</"+elementName+">"
-                    + "</typ:getIsirWsCuzkDataRequest>"
-                    + "</soapenv:Body>"
-                    + "</soapenv:Envelope>"; 
+                + "<soapenv:Header/>"
+                + "<soapenv:Body>"
+                + "<typ:getIsirWsCuzkDataRequest>"
+                + "<" + elementName + ">" + elementValue + "</" + elementName + ">"
+                + "</typ:getIsirWsCuzkDataRequest>"
+                + "</soapenv:Body>"
+                + "</soapenv:Envelope>";
         smResponse = getResponse();
     }
 
     /**
      * Method to get response from the web service
-     * @return 
+     *
+     * @return
      */
     public SOAPMessage getResponse() {
         try {
             MessageFactory messageFactory = MessageFactory.newInstance();
             ByteArrayInputStream bais = new ByteArrayInputStream(sSOAPXml.getBytes());
             SOAPMessage soapMessage = messageFactory.createMessage(null, bais);
-            
-            sendSoapRequest(WS_URL, soapMessage);            
-        } catch (SOAPException ex) {
+            sendSoapRequest(WS_URL, soapMessage);
+        } catch (SOAPException | IOException ex) {
             smResponse = null;
             Logger.getLogger(ISIRSOAP.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (IOException ex) {
-            smResponse = null;
-            Logger.getLogger(ISIRSOAP.class.getName()).log(Level.SEVERE, null, ex);
-        } 
+        }
         return smResponse;
     }
 
     /**
      * Private method wich sends the request to the web service
+     *
      * @param WS_URL
-     * @param soapMessage 
+     * @param soapMessage
      */
     private void sendSoapRequest(String WS_URL, SOAPMessage soapMessage) {
-            final boolean isHttps = WS_URL.toLowerCase().startsWith("https");
-            HttpsURLConnection httpsConnection = null;
+        final boolean isHttps = WS_URL.toLowerCase().startsWith("https");
+        HttpsURLConnection httpsConnection = null;
+        // Open HTTPS connection
+        if (isHttps) {
             // Open HTTPS connection
-            if (isHttps) {
-                // Open HTTPS connection
-                URL url;
-                try {
-                    url = new URL(WS_URL);
-                    try {
-                    httpsConnection = (HttpsURLConnection) url.openConnection();
-                } catch (IOException ex) {
-                    smResponse = null;
-                    //Logger.getLogger(ISIRSOAP.class.getName()).log(Level.SEVERE, null, ex);
-                }
-                } catch (MalformedURLException ex) {
-                    smResponse = null;
-                    //Logger.getLogger(ISIRSOAP.class.getName()).log(Level.SEVERE, null, ex);
-                } 
-                
-                
-                // Trust all hosts
-                httpsConnection.setHostnameVerifier(new TrustAllHosts());
-                try {
-                    // Connect
-                    httpsConnection.connect();
-                } catch (IOException ex) {
-                    smResponse = null;
-                    //Logger.getLogger(ISIRSOAP.class.getName()).log(Level.SEVERE, null, ex);
-                } 
-            }
-            // Send HTTP SOAP request and get response
-            SOAPConnection soapConnection;
-        try {
-            
-            soapConnection = SOAPConnectionFactory.newInstance().createConnection();
+            URL url;
             try {
-            smResponse = soapConnection.call(soapMessage, WS_URL);
-            soapConnection.close();
-            } catch (SOAPException ex) {
+                url = new URL(WS_URL);
+                httpsConnection = (HttpsURLConnection) url.openConnection();
+                //using only one trustful host
+                httpsConnection.setHostnameVerifier(new TrustAllHosts());
+                //connect
+                httpsConnection.connect();
+                SOAPConnection soapConnection;
+                soapConnection = SOAPConnectionFactory.newInstance().createConnection();
+                smResponse = soapConnection.call(soapMessage, WS_URL);
+                soapConnection.close();
+            } catch (IOException|SOAPException ex) {
                 smResponse = null;
-                System.out.println("\n>>>Request wasn't responded correctly: "+ex.getMessage());
-            }            
-        } catch (SOAPException ex) {
-            smResponse = null;
-            System.out.println("\n>>>Request wasn't responded correctly: "+ex.getMessage());
-        } catch (UnsupportedOperationException ex) {
-            smResponse = null;
-            System.out.println("\n>>>Connection couldn´t be established: "+ex.getMessage());
-        }
-            // Close HTTPS connection
-            if (isHttps) {
-                httpsConnection.disconnect();
+                Logger.getLogger(ISIRSOAP.class.getName()).log(Level.SEVERE, null, ex);
             }
+        }
+        // Send HTTP SOAP request and get response
+        
+        
+        // Close HTTPS connection
+        if (isHttps) {
+            httpsConnection.disconnect();
+        }
     }
-    
+
     /**
-     * Private class which helps to verify that the host is trustfull. In this case there is only one host specified by the application therefor we know it is trustfull.
+     * Private class which helps to verify that the host is trustfull. In this
+     * case there is only one host specified by the application therefor we know
+     * it is trustfull.
      */
     private static class TrustAllHosts implements HostnameVerifier {
 
@@ -151,5 +131,5 @@ public class ISIRSOAP {
             return true;
         }
     }
-    
+
 }

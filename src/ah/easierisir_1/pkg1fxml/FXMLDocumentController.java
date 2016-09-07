@@ -99,8 +99,19 @@ public class FXMLDocumentController implements Initializable {
             tSavePath2.setText(ISIROperator.getSavePath(sPathToLoad));
         }
         if (sPathToLoad == null){
-            handlebLoadCSVButton(new ActionEvent());
+            FileChooser fc = new FileChooser();
+            fc.setTitle("Vyberte CSV soubor k načtení.");
+            fc.getExtensionFilters().addAll(new FileChooser.ExtensionFilter("CSV", "*.csv"));
+            fOpen = fc.showOpenDialog(new Stage());
+        if (fOpen != null) {
+            sPathToLoad = fOpen.getPath();
+            tLoadPath.setText(" Vstupní CSV soubor: " + sPathToLoad);
             handleRunRequestsButton(new ActionEvent());
+        } else {
+            bRunRequests.setDisable(false);
+            return;
+        }
+           
         }
         pbRequestsDone.progressProperty().bind(isirOperator.progressProperty());
         th = new Thread(isirOperator);

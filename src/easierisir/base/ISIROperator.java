@@ -9,6 +9,7 @@ import com.opencsv.CSVWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -45,6 +46,11 @@ public class ISIROperator extends Task {
     private ArrayList<String[]> alRecords = new ArrayList<>();
 
     private int iNumOfAllSubjects = 0, iNumOfRequestedSubjects = 0;
+    private String sType;
+    String[] httpResponse;
+    
+    SOAPMessage response;
+    ArrayList<SOAPMessage> alResponses;
 
     /**
      * Constructor with one parameter
@@ -102,69 +108,98 @@ public class ISIROperator extends Task {
      * The inherited method which is called whenever the task starts
      *
      * @return
+     * @throws java.io.IOException
      * @throws Exception
      */
     @Override
-    protected Object call() throws Exception {
-        File f = new File(sPathToCreateCSV);
-        cwSubjectsFound = new CSVWriter(new FileWriter(f), cSeparator);
-        cwSubjectsNotFound = new CSVWriter(new FileWriter(new File(f.getParent() + "\\NotFound.csv")), cSeparator);
-
-        alAllSubjects = new ISIRCSVLoader(sPathToCSV).getAllSubjects();
-        iNumOfAllSubjects = alAllSubjects.size();
+    protected Object call() {
+        prepareFilesAndReadSubjects();
+        //for each subject in the list
         alAllSubjects.stream().forEach((String[] sf) -> {
-            SOAPMessage response = null;
+            
+            response = null;
+            alResponses = new ArrayList<>();
+            // if a record is not empty
             if (sf.length > 1) {
+                // another subject will be requested
                 iNumOfRequestedSubjects += 1;
-                updateProgress((iNumOfRequestedSubjects * 100) / iNumOfAllSubjects, 100);
-                response = new ISIRSOAP(getTypeOf(sf[1]), sf[1]).getResponse();
-            }
-            if (response != null) {
-                try {
-                    ArrayList<HashMap> alAllData = new ISIRXMLParser(response).getAlAllData();
-                    isirLines = new ISIRCSVLinesMaker(alAllData);
-                    ArrayList<String[]> alLinesToCSV = isirLines.getAlCSVLines();
-                    if (isirLines.isFound()) {
-                        alLinesToCSV.stream().forEach((sfToCSV) -> {
-                            sfToCSV[0] = sf[0];
-                            sfToCSV[1] = sf[1];
-                            cwSubjectsFound.writeNext(sfToCSV);
-                            alRecords.add(sfToCSV);
-                        });
-
-                    } else {
-                        alLinesToCSV.stream().forEach((sfToCSV) -> {
-                            sfToCSV[0] = sf[0];
-                            sfToCSV[1] = sf[1];
-                            cwSubjectsNotFound.writeNext(sfToCSV);
-                        });
+                // white spaces will be reduced
+                sf[1] = sf[1].replaceAll(" ", "");
+                //type of the request is defined
+                for (String sType : sf[1].split(",")){
+                    switch (getTypeOf(sType)) {
+                    case "rc":
+                    case "ic":
+                        sf[1] = sType;
+                        doSOAPRequest(getTypeOf(sType), sType);
+                        break;
+                    case "bd":
+                    {
+                        try {
+                            doHTTPRequest(sf[0],sType);
+                        } catch (URISyntaxException ex) {
+                            writeException(sf[0], sType, "Dotazování dle data "
+                                    + "narození se nezdařilo. Prosím, zkuste "
+                                    + "znovu nebo vyhledejte ručně.");
+                            updateMessage(sf[0]+";"+sType+";"+"Dotazování dle data "
+                                    + "narození se nezdařilo. Prosím, zkuste "
+                                    + "znovu nebo vyhledejte ručně.");
+                            Logger.getLogger(ISIROperator.class.getName()).
+                                    log(Level.SEVERE, null, ex);
+                        }
                     }
-                    //new CSVWriter, put lines from lines maker
-                } catch (SOAPException | IOException | ParserConfigurationException | SAXException ex) {
-                    String s[] = {sf[0], sf[1], "An exception when request executed. Please try again or request the subject manually."};
-                    Logger.getLogger(ISIROperator.class.getName()).log(Level.SEVERE, null, ex);
+                        break;
+                    case "name":
+                         try {
+                            doHTTPRequest(sf[0],"");
+                        } catch (URISyntaxException ex) {
+                            writeException(sf[0], sType, "Dotazování dle jména "
+                                    + "se nezdařilo. Prosím, zkuste "
+                                    + "znovu nebo vyhledejte ručně.");
+                            updateMessage(sf[0]+";"+sType+";"+"Dotazování dle jména "
+                                    + "se nezdařilo. Prosím, zkuste "
+                                    + "znovu nebo vyhledejte ručně.");
+                            Logger.getLogger(ISIROperator.class.getName()).
+                                    log(Level.SEVERE, null, ex);
+                        }
+                        break;
+                    default:
+                        writeException(sf[0], sType, "Prosím, zkontrolujte zadané "
+                                + "parametry. Pravděpodobně jsou špatně zadány. "
+                                + "Dotaz nebyl vykonán, prosím zkuste znovu nebo vyhledejte ručně.");
+                        updateMessage(sf[0]+";"+sType+";"+"Prosím, zkontrolujte zadané "
+                                + "parametry. Pravděpodobně jsou špatně zadány. "
+                                + "Dotaz nebyl vykonán, prosím zkuste znovu nebo vyhledejte ručně");
                 }
-            } else {
-                String s[] = {sf[0], sf[1], "Request wasn't executed. Please try again or request the subject manually."};
-                cwSubjectsFound.writeNext(s);
+                }                
             }
+            processSOAPResponses(alResponses, sf);
+            //progress is updated for the progress bar
+            updateProgress((iNumOfRequestedSubjects * 100) / iNumOfAllSubjects, 100);
         });
-
-        cwSubjectsFound.close();
-        cwSubjectsNotFound.close();
-
+        closeFiles();
+       
         updateMessage("Done");
         return "Done";
     }
-
+    /**
+     * Returns new file path for saving result according to the specified source file
+     * @param sLoadPath
+     * @return 
+     */
     public static final String getSavePath(String sLoadPath) {
         return (new File(sLoadPath).getParent()) + "\\Found.csv";
     }
 
     public static final String getTypeOf(String s) {
+        if (s.matches("xxx") || s.matches("")){
+            return "name";
+        }
         Pattern pIC = Pattern.compile("[0-9]{6,8}");
         Pattern pRC = Pattern.compile("[0-9]{10}");
+        Pattern pBD = Pattern.compile("[0-9]{1,2}\\.[0-9]{1,2}\\.[0-9]{4}");
         Matcher mField = pIC.matcher(s);
+        
         if (mField.matches()) {
             return "ic";
         }
@@ -172,10 +207,128 @@ public class ISIROperator extends Task {
         if (mField.matches()) {
             return "rc";
         }
-        return "wrong parameter";
+        mField = pBD.matcher(s);
+        if (mField.matches()) { 
+            return "bd";
+        }
+        else {
+            return "wrong parameter";
+        }
+            
     }
 
     public ArrayList<String[]> getAlAllFoundSubjects() {
         return alRecords;
     }
+
+    private void prepareFilesAndReadSubjects() {
+        try {
+            //file where the found subjects from the isir database are written
+            File f = new File(sPathToCreateCSV);
+            cwSubjectsFound = new CSVWriter(new FileWriter(f), cSeparator);
+            //control file for subjects not found in the isir database
+            cwSubjectsNotFound = new CSVWriter(new FileWriter(new File(f.getParent() +
+                                                    "\\NotFound.csv")), CSV_SEPARATOR);
+            //read all the subjects to be requested in the ISIRCSVLoader via the OpenCSV library
+            alAllSubjects = new ISIRCSVLoader(sPathToCSV).getAllSubjects();
+            //number of subjects
+            iNumOfAllSubjects = alAllSubjects.size();
+        } catch (IOException ex) {
+            
+            updateMessage("Alert - write protection.");
+            Logger.getLogger(ISIROperator.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+
+    public void doHTTPRequest(String name, String bd) throws URISyntaxException {
+        String[] sf = {name, bd, ""};
+        ISIRHttpRequestor ihtp = new ISIRHttpRequestor(name, bd);
+        httpResponse = ihtp.getResponse();
+        
+        //vracet odkaz do tableview na konkrétní vyhledávání
+        //System.out.println(ihtp.getUrl());
+        if (httpResponse[0] == "2") {
+            sf[2] = httpResponse[1];
+            cwSubjectsFound.writeNext(sf);
+            
+            updateMessage(name + ";" + bd + ";" + sf[2]);
+        } else if (httpResponse[0] == "1") {
+            sf[2]="WS";
+            cwSubjectsNotFound.writeNext(sf);
+            
+            updateMessage(name+";"+bd+";WS");
+        } else {
+            cwSubjectsFound.writeNext(sf);
+            
+            updateMessage(name + ";" + bd + ";Něco je špatně, zkontrolujte "
+                    + "zadané údaje a připojení k internetu.");
+        }
+    }
+
+    private void doSOAPRequest(String sType, String rc_ic) {
+        response = new ISIRSOAP(sType, rc_ic).getResponse();
+                        alResponses.add(response);
+    }
+
+    private void writeException(String sf0, String sf1, String text) {
+        String s[] = {sf0,sf1,text};
+        cwSubjectsFound.writeNext(s);
+    }
+
+    private void processSOAPResponses(ArrayList<SOAPMessage> alResponses, String[] sf) {
+        //for each request more responses can be returned
+                for (SOAPMessage respMessage: alResponses){
+                    if (respMessage != null) {
+                        try {
+                            ArrayList<HashMap> alAllData = new ISIRXMLParser(respMessage).
+                                    getAlAllData();
+                            isirLines = new ISIRCSVLinesMaker(alAllData);
+                            ArrayList<String[]> alLinesToCSV = isirLines.getAlCSVLines();
+                            if (isirLines.isFound()) {
+                                alLinesToCSV.stream().forEach((sfToCSV) -> {
+                                    sfToCSV[0] = sf[0];
+                                    sfToCSV[1] = sf[1];
+                                    cwSubjectsFound.writeNext(sfToCSV);
+                                    alRecords.add(sfToCSV);
+                                    
+                                    updateMessage(sf[0]+";"+sf[1]+";"+sfToCSV[2]);
+                                });
+                                
+                            } else {
+                                alLinesToCSV.stream().forEach((sfToCSV) -> {
+                                    sfToCSV[0] = sf[0];
+                                    sfToCSV[1] = sf[1];
+                                    cwSubjectsNotFound.writeNext(sfToCSV);
+                                    
+                                    updateMessage(sf[0]+";"+sf[1]+";WS");
+                                });
+                            }
+                            //new CSVWriter, put lines from lines maker
+                        } catch (SOAPException | IOException | ParserConfigurationException | SAXException ex) {
+                            String s[] = {sf[0], sf[1], "An exception occured when request executed. "
+                                    + "Please try again or request the subject manually."};
+                            cwSubjectsFound.writeNext(s);
+                           
+                            updateMessage(sf[0]+";"+sf[1]+";"+"ZKUSTE VYHLEDAT ZNOVU NEBO RUČNĚ!");
+                        }
+                    } else {
+                        String s[] = {sf[0], sf[1], "Request wasn't executed. "
+                                + "Please try again or request the subject manually."};
+                        cwSubjectsFound.writeNext(s);
+                        
+                        updateMessage(sf[0]+";"+sf[1]+";"+"ZKUSTE VYHLEDAT ZNOVU NEBO RUČNĚ!");
+                    }
+                }
+    }
+
+    private void closeFiles() {
+        try {
+            cwSubjectsFound.close();
+            cwSubjectsNotFound.close();
+        } catch (IOException ex) {
+            Logger.getLogger(ISIROperator.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+    
+
 }

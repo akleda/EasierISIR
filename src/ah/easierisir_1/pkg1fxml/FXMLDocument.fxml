@@ -35,7 +35,7 @@
         </TextFlow> 
         
         <Label style="-fx-font: NORMAL 20 Tahoma;" text="Evidence dlužníků" />
-        <TableView fx:id="tableView" prefHeight="300.0" prefWidth="380.0" >
+        <TableView fx:id="tableView" prefWidth="380.0" >
             <columns>
                 <TableColumn minWidth="200.0" text="Jméno Příjmení/Název" >
                     <cellValueFactory>

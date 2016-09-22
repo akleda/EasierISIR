@@ -26,7 +26,7 @@ public class ISIRCSVLinesMaker {
     }
 
     /**
-     * Private method wich creates the lines accordingly to the keys in the provided hash map data
+     * Private method which creates the lines accordingly to the keys in the provided hash map data
      * @param alAllData 
      */
     private void getFromResponse(ArrayList<HashMap> alAllData) {

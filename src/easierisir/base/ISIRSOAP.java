@@ -76,7 +76,7 @@ public class ISIRSOAP {
             sendSoapRequest(WS_URL, soapMessage);
         } catch (SOAPException | IOException ex) {
             smResponse = null;
-            Logger.getLogger(ISIRSOAP.class.getName()).log(Level.SEVERE, null, ex);
+            //Logger.getLogger(ISIRSOAP.class.getName()).log(Level.SEVERE, null, ex);
         }
         return smResponse;
     }
@@ -90,9 +90,6 @@ public class ISIRSOAP {
     private void sendSoapRequest(String WS_URL, SOAPMessage soapMessage) {
         final boolean isHttps = WS_URL.toLowerCase().startsWith("https");
         HttpsURLConnection httpsConnection = null;
-        // Open HTTPS connection
-        if (isHttps) {
-            // Open HTTPS connection
             URL url;
             try {
                 url = new URL(WS_URL);
@@ -107,14 +104,14 @@ public class ISIRSOAP {
                 soapConnection.close();
             } catch (IOException|SOAPException ex) {
                 smResponse = null;
-                Logger.getLogger(ISIRSOAP.class.getName()).log(Level.SEVERE, null, ex);
+                //Logger.getLogger(ISIRSOAP.class.getName()).log(Level.SEVERE, null, ex);
             }
-        }
+//        } else smResponse = null;
         // Send HTTP SOAP request and get response
         
         
         // Close HTTPS connection
-        if (isHttps) {
+        if (httpsConnection != null) {
             httpsConnection.disconnect();
         }
     }
